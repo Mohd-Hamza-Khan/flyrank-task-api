@@ -1,28 +1,37 @@
-"""Tests for the FlyRank Task CRUD API (Stage 2).
+"""Tests for the FlyRank Task CRUD API.
 
-Uses FastAPI's TestClient which is built on httpx under the hood.
-No external server is needed — the app runs in-process.
+Uses FastAPI's TestClient (httpx-backed) so no external server is needed.
+Each test gets a fresh in-memory TaskService via an autouse fixture.
 """
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from main import app, tasks, _next_id
+from app.main import create_app
+from app.models.task import TaskCreate
+from app.services.task_service import TaskService, get_task_service
 
 
-client = TestClient(app)
+@pytest.fixture
+def service() -> TaskService:
+    """A fresh TaskService instance, shared between the app and the test."""
+    return TaskService()
 
 
-@pytest.fixture(autouse=True)
-def _reset_storage():
-    """Clear the in-memory task list before each test for isolation."""
-    tasks.clear()
-    # Reset the ID counter
-    import main
-    main._next_id = 1
-    yield
-    tasks.clear()
-    main._next_id = 1
+@pytest.fixture
+def fastapi_app(service: TaskService) -> FastAPI:
+    """A FastAPI app with the shared TaskService injected via dependency override."""
+    app = create_app()
+    app.dependency_overrides[get_task_service] = lambda: service
+    return app
+
+
+@pytest.fixture
+def client(fastapi_app: FastAPI) -> TestClient:
+    """TestClient for the fresh app."""
+    with TestClient(fastapi_app) as c:
+        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +39,7 @@ def _reset_storage():
 # ---------------------------------------------------------------------------
 
 
-def test_root():
+def test_root(client: TestClient):
     """GET / returns 200 and a welcome message."""
     response = client.get("/")
     assert response.status_code == 200
@@ -40,7 +49,7 @@ def test_root():
     assert "health" in data
 
 
-def test_health():
+def test_health(client: TestClient):
     """GET /health returns 200 and status ok."""
     response = client.get("/health")
     assert response.status_code == 200
@@ -52,17 +61,17 @@ def test_health():
 # ---------------------------------------------------------------------------
 
 
-def test_list_tasks_empty():
+def test_list_tasks_empty(client: TestClient):
     """GET /tasks returns 200 and an empty list when no tasks exist."""
     response = client.get("/tasks")
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_list_tasks_non_empty():
+def test_list_tasks_non_empty(client: TestClient, service: TaskService):
     """GET /tasks returns 200 and all stored tasks."""
-    client.post("/tasks", json={"title": "Task A"})
-    client.post("/tasks", json={"title": "Task B"})
+    service.create_task(TaskCreate(title="Task A"))
+    service.create_task(TaskCreate(title="Task B"))
 
     response = client.get("/tasks")
     assert response.status_code == 200
@@ -77,21 +86,20 @@ def test_list_tasks_non_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_get_task_existing():
+def test_get_task_existing(client: TestClient, service: TaskService):
     """GET /tasks/{id} returns 200 for a valid ID."""
-    create_res = client.post("/tasks", json={"title": "My Task"})
-    task_id = create_res.json()["id"]
+    task = service.create_task(TaskCreate(title="My Task"))
 
-    response = client.get(f"/tasks/{task_id}")
+    response = client.get(f"/tasks/{task.id}")
     assert response.status_code == 200
-    task = response.json()
-    assert task["id"] == task_id
-    assert task["title"] == "My Task"
-    assert task["status"] == "todo"
-    assert "created_at" in task
+    result = response.json()
+    assert result["id"] == task.id
+    assert result["title"] == "My Task"
+    assert result["status"] == "todo"
+    assert "created_at" in result
 
 
-def test_get_task_not_found():
+def test_get_task_not_found(client: TestClient):
     """GET /tasks/{id} returns 404 for an unknown ID."""
     response = client.get("/tasks/999")
     assert response.status_code == 404
@@ -103,7 +111,7 @@ def test_get_task_not_found():
 # ---------------------------------------------------------------------------
 
 
-def test_create_task_minimal():
+def test_create_task_minimal(client: TestClient):
     """POST /tasks with only required fields returns 201."""
     response = client.post("/tasks", json={"title": "Simple Task"})
     assert response.status_code == 201
@@ -115,7 +123,7 @@ def test_create_task_minimal():
     assert "created_at" in task
 
 
-def test_create_task_full():
+def test_create_task_full(client: TestClient):
     """POST /tasks with all optional fields returns 201."""
     response = client.post(
         "/tasks",
@@ -133,14 +141,14 @@ def test_create_task_full():
     assert task["id"] == 1
 
 
-def test_create_task_invalid_body():
+def test_create_task_invalid_body(client: TestClient):
     """POST /tasks with an empty body returns 400."""
     response = client.post("/tasks", json={})
     assert response.status_code == 400
     assert "detail" in response.json()
 
 
-def test_create_task_empty_title():
+def test_create_task_empty_title(client: TestClient):
     """POST /tasks with an empty title returns 400."""
     response = client.post("/tasks", json={"title": ""})
     assert response.status_code == 400
@@ -151,24 +159,23 @@ def test_create_task_empty_title():
 # ---------------------------------------------------------------------------
 
 
-def test_update_task_existing():
+def test_update_task_existing(client: TestClient, service: TaskService):
     """PUT /tasks/{id} returns 200 and updated fields."""
-    create_res = client.post("/tasks", json={"title": "Original"})
-    task_id = create_res.json()["id"]
+    task = service.create_task(TaskCreate(title="Original"))
 
     response = client.put(
-        f"/tasks/{task_id}",
+        f"/tasks/{task.id}",
         json={"title": "Updated", "description": "New desc", "status": "done"},
     )
     assert response.status_code == 200
-    task = response.json()
-    assert task["id"] == task_id
-    assert task["title"] == "Updated"
-    assert task["description"] == "New desc"
-    assert task["status"] == "done"
+    result = response.json()
+    assert result["id"] == task.id
+    assert result["title"] == "Updated"
+    assert result["description"] == "New desc"
+    assert result["status"] == "done"
 
 
-def test_update_task_not_found():
+def test_update_task_not_found(client: TestClient):
     """PUT /tasks/{id} returns 404 for an unknown ID."""
     response = client.put(
         "/tasks/999",
@@ -178,12 +185,11 @@ def test_update_task_not_found():
     assert "detail" in response.json()
 
 
-def test_update_task_invalid_body():
+def test_update_task_invalid_body(client: TestClient, service: TaskService):
     """PUT /tasks/{id} with an invalid body returns 400."""
-    create_res = client.post("/tasks", json={"title": "Original"})
-    task_id = create_res.json()["id"]
+    task = service.create_task(TaskCreate(title="Original"))
 
-    response = client.put(f"/tasks/{task_id}", json={})
+    response = client.put(f"/tasks/{task.id}", json={})
     assert response.status_code == 400
 
 
@@ -192,21 +198,20 @@ def test_update_task_invalid_body():
 # ---------------------------------------------------------------------------
 
 
-def test_delete_task_existing():
+def test_delete_task_existing(client: TestClient, service: TaskService):
     """DELETE /tasks/{id} returns 204 with an empty body."""
-    create_res = client.post("/tasks", json={"title": "To Delete"})
-    task_id = create_res.json()["id"]
+    task = service.create_task(TaskCreate(title="To Delete"))
 
-    response = client.delete(f"/tasks/{task_id}")
+    response = client.delete(f"/tasks/{task.id}")
     assert response.status_code == 204
     assert response.content == b""
 
     # Confirm the task is gone
-    follow_up = client.get(f"/tasks/{task_id}")
+    follow_up = client.get(f"/tasks/{task.id}")
     assert follow_up.status_code == 404
 
 
-def test_delete_task_not_found():
+def test_delete_task_not_found(client: TestClient):
     """DELETE /tasks/{id} returns 404 for an unknown ID."""
     response = client.delete("/tasks/999")
     assert response.status_code == 404
@@ -218,9 +223,9 @@ def test_delete_task_not_found():
 # ---------------------------------------------------------------------------
 
 
-def test_full_lifecycle():
+def test_full_lifecycle(client: TestClient, service: TaskService):
     """Create, read, update, delete, verify gone — one task end-to-end."""
-    # Create
+    # Create (via API to exercise the full path)
     create_res = client.post("/tasks", json={"title": "Lifecycle Task"})
     assert create_res.status_code == 201
     task_id = create_res.json()["id"]
