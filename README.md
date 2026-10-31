@@ -1,7 +1,8 @@
-# FlyRank Week 2 Assignment A1 — Task CRUD API
+# FlyRank Week 3 Assignment A2 — Task CRUD API (SQLite Integration)
 
-A simple, professional Task CRUD API built with **Python 3.12+** and **FastAPI**.
-All data is stored in-memory (no database, no authentication).
+A simple, professional Task CRUD API built with **Python 3.10+** and **FastAPI**.
+All data is stored in a SQLite database (using Python's built-in `sqlite3` library).
+No authentication.
 
 The project follows a layered FastAPI layout: the app factory, routes, services,
 models, and error handlers each live in their own package.
@@ -53,12 +54,15 @@ flyrank-task-api/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   └── config.py           # Placeholder for future settings
+│   ├── db/
+│   │   ├── __init__.py
+│   │   └── database.py         # SQLite connection + schema initialization
 │   ├── models/
 │   │   ├── __init__.py
 │   │   └── task.py             # Pydantic schemas (TaskBase, TaskCreate, TaskUpdate, Task)
 │   ├── services/
 │   │   ├── __init__.py
-│   │   └── task_service.py     # TaskService — in-memory store + business logic
+│   │   └── task_service.py     # TaskService — SQLite storage + business logic
 │   ├── errors/
 │   │   ├── __init__.py
 │   │   ├── exceptions.py       # Domain exceptions (TaskNotFoundError)
@@ -70,7 +74,8 @@ flyrank-task-api/
 │   ├── __init__.py
 │   └── test_tasks.py           # 16 tests covering all endpoints
 ├── requirements.txt
-└── README.md
+├── README.md
+└── tasks.db                    # SQLite database file (gitignored)
 ```
 
 ## Architecture overview
@@ -78,9 +83,12 @@ flyrank-task-api/
 - **Routes** (`app/api/routes/tasks.py`) — 7 thin HTTP handlers in an `APIRouter`.
   Each delegates to the `TaskService` and returns the result. No storage logic
   here.
-- **Service** (`app/services/task_service.py`) — encapsulates the in-memory
-  list store, the ID counter, and all CRUD business logic. Raises
-  `TaskNotFoundError` for missing IDs.
+- **Service** (`app/services/task_service.py`) — `TaskService` class encapsulates
+  the SQLite database connection, table initialization, and all five CRUD
+  methods. Raises `TaskNotFoundError` for missing IDs.
+- **Database** (`app/db/database.py`) — centralized SQLite management: `DB_PATH`
+  default path, `get_connection()` factory (with `row_factory` and foreign keys
+  enabled), and `init_db()` for schema creation.
 - **Models** (`app/models/task.py`) — Pydantic schemas. `TaskCreate` is the
   POST body, `TaskUpdate` is the PUT body (currently identical, kept separate
   for future partial-update support), and `Task` is the read model.

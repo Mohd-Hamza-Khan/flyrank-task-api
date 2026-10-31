@@ -12,14 +12,13 @@ from app.middleware.logging import add_logging_middleware
 
 
 def create_app() -> FastAPI:
-    """Build a fully-wired FastAPI application."""
     app = FastAPI(
         title="FlyRank Task CRUD API",
         description=(
             "A simple task-management API built with FastAPI. "
-            "All data is stored in memory (no database)."
+            "All data is stored in a SQLite database."
         ),
-        version="1.0.0",
+        version="2.0.0",
     )
 
     # Middleware (currently a no-op placeholder)

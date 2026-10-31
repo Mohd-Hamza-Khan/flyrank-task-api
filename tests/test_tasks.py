@@ -15,8 +15,8 @@ from app.services.task_service import TaskService, get_task_service
 
 @pytest.fixture
 def service() -> TaskService:
-    """A fresh TaskService instance, shared between the app and the test."""
-    return TaskService()
+    """A fresh TaskService instance backed by an in-memory SQLite database."""
+    return TaskService(db_path=":memory:")
 
 
 @pytest.fixture
