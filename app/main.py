@@ -1,17 +1,26 @@
 """Application factory for the FlyRank Task CRUD API.
 
 Creates and configures a single FastAPI app instance: metadata, the tasks
-router, custom exception handlers, and (placeholder) middleware.
+router, custom exception handlers, middleware, and database initialization.
 """
 
 from fastapi import FastAPI
 
 from app.api.routes import tasks
+from app.database.initialization import init_db
 from app.errors.handlers import register_handlers
 from app.middleware.logging import add_logging_middleware
 
 
 def create_app() -> FastAPI:
+    """Build a fully-wired FastAPI application.
+
+    Initializes the SQLite database (creates table + seeds if empty) on every
+    startup.
+    """
+    # Database initialization — idempotent (CREATE IF NOT EXISTS + empty-check seed)
+    init_db()
+
     app = FastAPI(
         title="FlyRank Task CRUD API",
         description=(
