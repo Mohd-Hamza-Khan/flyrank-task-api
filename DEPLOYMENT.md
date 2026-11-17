@@ -1,6 +1,6 @@
 # FlyRank Task CRUD API — Deployment & Operational Guide
 
-This document outlines how to build, test, configure, and deploy the FlyRank Task CRUD API (Assignment A2 — SQLite Integration).
+This document outlines how to build, test, configure, and run the FlyRank Task CRUD API (Assignment A2 — SQLite Integration).
 
 ---
 
@@ -52,31 +52,6 @@ Environment variables (managed via `app/core/config.py`):
 
 ---
 
-## 4. Containerization (Docker)
-
-Build the Docker image:
-```bash
-docker build -t flyrank-task-api .
-```
-
-Run the container:
-```bash
-docker run -d -p 8000:8000 --name flyrank-api flyrank-task-api
-```
-
----
-
-## 5. Orchestration (Docker Compose)
-
-Start the service using Docker Compose:
-```bash
-docker-compose up -d --build
-```
-
-This mounts `tasks.db` as a volume so data persists across container restarts.
-
----
-
-## 6. CI/CD Pipeline
+## 4. CI/CD Pipeline
 
 A GitHub Actions workflow (`.github/workflows/ci.yml`) automatically triggers on push and pull requests to `main`/`master`, setting up Python 3.10 and executing the pytest test suite.

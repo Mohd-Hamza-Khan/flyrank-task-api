@@ -1,43 +1,47 @@
 # FlyRank Week 3 Assignment A2 — Task CRUD API (SQLite Integration)
 
-A simple, professional Task CRUD API built with **Python 3.10+** and **FastAPI**.
-All data is stored in a SQLite database (using Python's built-in `sqlite3` library).
+A professional, robust Task CRUD API built with **Python 3.10+** and **FastAPI**.
+All task data is persistently stored in a SQLite database (using Python's built-in `sqlite3` library).
 No authentication.
 
-The project follows a layered FastAPI layout: the app factory, routes, services,
-models, and error handlers each live in their own package.
+The project follows a layered FastAPI architecture: app factory, API routes, database layer, service layer, models, and error handlers each live in their own modular packages.
+
+---
+
+## Key Features (Assignment A2)
+- **SQLite Persistence**: Centralized connection management (`app/database/connection.py`) with `row_factory=sqlite3.Row` and foreign key enforcement.
+- **Idempotent Initialization & Seeding**: Automatically creates the `tasks` table and seeds **3 example tasks** (`Learn FastAPI`, `Implement SQLite database`, `Write API tests`) if the table is empty (`app/database/initialization.py`).
+- **Done/Status Synchronization**: Includes the `done` integer column (`0` for `todo`/`in_progress`, `1` for `done`), automatically synchronized with `status`.
+- **Robust Test Suite**: Comprehensive `pytest` test suite covering database initialization, idempotency, seed tasks, and all 7 API CRUD endpoints.
+
+---
 
 ## Prerequisites
 
-- **Python 3.10+** (tested on 3.12.5)
-- **pip** (tested on pip 26.0.1)
+- **Python 3.10+**
+- **pip**
 
-## Installation
+---
+
+## Installation & Running
 
 ```bash
-# Clone (if not already done)
-git clone <repo-url>
+# Navigate into the project directory
 cd flyrank-task-api
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-## Running the API
-
-```bash
+# Run the API server with auto-reload
 uvicorn app.main:app --reload
 ```
 
 Once running, the API is available at:
+- **API Root**: http://127.0.0.1:8000
+- **Interactive Swagger UI Docs**: http://127.0.0.1:8000/docs
+- **ReDoc Documentation**: http://127.0.0.1:8000/redoc
 
-- **API**: http://127.0.0.1:8000
-- **Swagger UI**: http://127.0.0.1:8000/docs
-- **ReDoc**: http://127.0.0.1:8000/redoc
-
-### Swagger UI Preview
-
-![Swagger UI screenshot](swagger-screenshot.png)
+---
 
 ## Project Structure
 
@@ -45,7 +49,7 @@ Once running, the API is available at:
 flyrank-task-api/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # App factory (create_app) — wiring only
+│   ├── main.py                 # App factory (create_app)
 │   ├── api/
 │   │   ├── __init__.py
 │   │   └── routes/
@@ -53,52 +57,35 @@ flyrank-task-api/
 │   │       └── tasks.py        # All 7 route handlers in an APIRouter
 │   ├── core/
 │   │   ├── __init__.py
-│   │   └── config.py           # Placeholder for future settings
+│   │   └── config.py           # Configuration (DB_PATH settings)
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── connection.py       # SQLite connection manager
 │   │   └── initialization.py   # Schema creation & idempotent seeding
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── task.py             # Pydantic schemas (TaskBase, TaskCreate, TaskUpdate, Task with done)
+│   │   └── task.py             # Pydantic schemas (Task, TaskCreate, TaskUpdate)
 │   ├── services/
 │   │   ├── __init__.py
-│   │   └── task_service.py     # TaskService — SQLite storage + done/status sync
+│   │   └── task_service.py     # SQLite storage + done/status sync
 │   ├── errors/
 │   │   ├── __init__.py
 │   │   ├── exceptions.py       # Domain exceptions (TaskNotFoundError)
 │   │   └── handlers.py         # Exception handlers (422→400, 404 mapping)
 │   └── middleware/
 │       ├── __init__.py
-│       └── logging.py          # Placeholder for request logging
+│       └── logging.py          # Request logging middleware
 ├── tests/
 │   ├── __init__.py
-│   ├── test_tasks.py           # Endpoint tests
-│   └── test_database.py        # Database initialization & seeding tests
+│   ├── test_tasks.py           # API integration tests
+│   └── test_database.py        # Database schema & seeding tests
 ├── requirements.txt
 ├── README.md
+├── DEPLOYMENT.md
 └── tasks.db                    # SQLite database file (gitignored)
 ```
 
-## Architecture overview
-
-- **Routes** (`app/api/routes/tasks.py`) — 7 thin HTTP handlers in an `APIRouter`.
-  Each delegates to the `TaskService` and returns the result. No storage logic
-  here.
-- **Service** (`app/services/task_service.py`) — `TaskService` class encapsulates
-  the SQLite database connection, table initialization, and all five CRUD
-  methods. Raises `TaskNotFoundError` for missing IDs.
-- **Database** (`app/db/database.py`) — centralized SQLite management: `DB_PATH`
-  default path, `get_connection()` factory (with `row_factory` and foreign keys
-  enabled), and `init_db()` for schema creation.
-- **Models** (`app/models/task.py`) — Pydantic schemas. `TaskCreate` is the
-  POST body, `TaskUpdate` is the PUT body (currently identical, kept separate
-  for future partial-update support), and `Task` is the read model.
-- **Errors** (`app/errors/`) — `exceptions.py` defines domain exceptions;
-  `handlers.py` registers handlers that convert them to HTTP responses.
-  The `RequestValidationError` handler converts FastAPI's default 422 to 400.
-- **App** (`app/main.py`) — the `create_app()` factory wires everything together.
-  A module-level `app = create_app()` keeps `uvicorn app.main:app` working.
+---
 
 ## Running Tests
 
@@ -106,13 +93,10 @@ flyrank-task-api/
 pytest tests/ -v
 ```
 
-16 tests cover all endpoints, status codes, and edge cases (empty body, 404s, 400s,
-and a full create-read-update-delete lifecycle).
-
-To run a single test:
-
+To run a specific test file:
 ```bash
-pytest tests/test_tasks.py::test_create_task_minimal -v
+pytest tests/test_tasks.py -v
+pytest tests/test_database.py -v
 ```
 
 ---
@@ -122,143 +106,43 @@ pytest tests/test_tasks.py::test_create_task_minimal -v
 ### `GET /`
 Root endpoint — returns a welcome message and links.
 
-**Response** — `200 OK`
-```json
-{
-  "message": "Welcome to the FlyRank Task CRUD API",
-  "docs": "/docs",
-  "health": "/health"
-}
-```
-
----
-
 ### `GET /health`
-Health-check endpoint.
-
-**Response** — `200 OK`
-```json
-{ "status": "ok" }
-```
-
----
+Health-check endpoint (`{"status": "ok"}`).
 
 ### `GET /tasks`
-List all tasks (empty list if none exist).
+List all tasks (returns 3 pre-seeded tasks by default on a fresh database).
 
 **Response** — `200 OK`
 ```json
 [
   {
     "id": 1,
-    "title": "Write tests",
+    "title": "Learn FastAPI",
     "description": null,
     "status": "todo",
-    "created_at": "2026-10-29T06:30:00"
+    "done": 0,
+    "created_at": "2026-10-31T00:00:00"
   }
 ]
 ```
 
----
-
 ### `GET /tasks/{task_id}`
 Retrieve a single task by its ID.
 
-**Response (found)** — `200 OK`
-```json
-{
-  "id": 1,
-  "title": "Write tests",
-  "description": null,
-  "status": "todo",
-  "created_at": "2026-10-29T06:30:00"
-}
-```
-
-**Response (not found)** — `404 Not Found`
-```json
-{
-  "detail": "Task 999 not found"
-}
-```
-
----
-
 ### `POST /tasks`
-Create a new task. The server assigns `id` and `created_at`.
+Create a new task. The server assigns `id`, `created_at`, and synchronizes `done`.
 
 **Request body**
 ```json
 {
-  "title": "Write tests",
-  "description": "Write comprehensive tests",
-  "status": "todo"
+  "title": "Write SQLite tests",
+  "description": "Test database persistence",
+  "status": "in-progress"
 }
 ```
-
-**Response** — `201 Created`
-```json
-{
-  "id": 1,
-  "title": "Write tests",
-  "description": "Write comprehensive tests",
-  "status": "todo",
-  "created_at": "2026-10-29T06:30:00"
-}
-```
-
-**Invalid body** — `400 Bad Request`
-```json
-{
-  "detail": [
-    {
-      "type": "missing",
-      "loc": ["body", "title"],
-      "msg": "Field required",
-      "input": {}
-    }
-  ]
-}
-```
-
----
 
 ### `PUT /tasks/{task_id}`
 Update an existing task by its ID.
 
-**Request body**
-```json
-{
-  "title": "Updated title",
-  "description": "Updated description",
-  "status": "done"
-}
-```
-
-**Response (success)** — `200 OK`
-```json
-{
-  "id": 1,
-  "title": "Updated title",
-  "description": "Updated description",
-  "status": "done",
-  "created_at": "2026-10-29T06:30:00"
-}
-```
-
-**Response (not found)** — `404 Not Found`
-```json
-{ "detail": "Task 999 not found" }
-```
-
----
-
 ### `DELETE /tasks/{task_id}`
-Delete a task by its ID.
-
-**Response (success)** — `204 No Content` (empty body)
-
-**Response (not found)** — `404 Not Found`
-```json
-{ "detail": "Task 999 not found" }
-```
+Delete a task by its ID (`204 No Content`).
