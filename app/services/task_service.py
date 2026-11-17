@@ -21,8 +21,8 @@ class TaskService:
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
-        init_db(db_path)
         self._conn: sqlite3.Connection = get_connection(db_path)
+        init_db(db_path, conn=self._conn)
 
     def _parse_created_at(self, val) -> datetime:
         """Parse created_at stored as TEXT (ISO string) or REAL (timestamp)."""

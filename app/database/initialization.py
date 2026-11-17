@@ -1,5 +1,6 @@
 """Database initialization: schema creation and seed data."""
 
+import sqlite3
 from app.database.connection import get_connection
 
 # The canonical schema. Matches the A1 data model and adds a `done` column
@@ -23,15 +24,20 @@ SEED_TASKS = [
 ]
 
 
-def init_db(db_path: str = "tasks.db") -> None:
+def init_db(db_path: str = "tasks.db", conn: sqlite3.Connection = None) -> None:
     """Create the tasks table and seed initial data if the table is empty.
 
     This function is idempotent:
     - `CREATE TABLE IF NOT EXISTS` never fails on re-run.
     - Seeding checks `SELECT COUNT(*)` first and only inserts when the table
       is empty, so restarting the app does not create duplicate rows.
+    - If an active `conn` is passed, operations run on it without closing it.
     """
-    conn = get_connection(db_path)
+    close_conn = False
+    if conn is None:
+        conn = get_connection(db_path)
+        close_conn = True
+
     conn.execute(CREATE_TABLE_SQL)
 
     count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
@@ -43,4 +49,5 @@ def init_db(db_path: str = "tasks.db") -> None:
         )
         conn.commit()
 
-    conn.close()
+    if close_conn:
+        conn.close()

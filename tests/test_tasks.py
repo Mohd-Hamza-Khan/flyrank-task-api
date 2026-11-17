@@ -1,9 +1,11 @@
 """Tests for the FlyRank Task CRUD API.
 
 Uses FastAPI's TestClient (httpx-backed) so no external server is needed.
-Each test gets a fresh in-memory TaskService via an autouse fixture.
+Each test gets a fresh in-memory SQLite TaskService via fixture override,
+which initializes and seeds the 3 default tasks.
 """
 
+from typing import Generator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -28,7 +30,7 @@ def fastapi_app(service: TaskService) -> FastAPI:
 
 
 @pytest.fixture
-def client(fastapi_app: FastAPI) -> TestClient:
+def client(fastapi_app: FastAPI) -> Generator[TestClient, None, None]:
     """TestClient for the fresh app."""
     with TestClient(fastapi_app) as c:
         yield c
@@ -61,26 +63,33 @@ def test_health(client: TestClient):
 # ---------------------------------------------------------------------------
 
 
-def test_list_tasks_empty(client: TestClient):
-    """GET /tasks returns 200 and an empty list when no tasks exist."""
+def test_list_tasks_seeded(client: TestClient):
+    """GET /tasks returns 200 and the 3 default seeded tasks."""
     response = client.get("/tasks")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    assert len(data) == 3
+    assert data[0]["title"] == "Learn FastAPI"
+    assert data[0]["done"] == 0
+    assert data[1]["title"] == "Implement SQLite database"
+    assert data[1]["done"] == 0
+    assert data[2]["title"] == "Write API tests"
+    assert data[2]["done"] == 1
 
 
 def test_list_tasks_non_empty(client: TestClient, service: TaskService):
-    """GET /tasks returns 200 and all stored tasks."""
+    """GET /tasks returns 200 and all stored tasks (3 seeded + 2 new)."""
     service.create_task(TaskCreate(title="Task A", status="todo"))
     service.create_task(TaskCreate(title="Task B", status="done"))
 
     response = client.get("/tasks")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert data[0]["title"] == "Task A"
-    assert data[0]["done"] == 0
-    assert data[1]["title"] == "Task B"
-    assert data[1]["done"] == 1
+    assert len(data) == 5
+    assert data[3]["title"] == "Task A"
+    assert data[3]["done"] == 0
+    assert data[4]["title"] == "Task B"
+    assert data[4]["done"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -88,16 +97,15 @@ def test_list_tasks_non_empty(client: TestClient, service: TaskService):
 # ---------------------------------------------------------------------------
 
 
-def test_get_task_existing(client: TestClient, service: TaskService):
-    """GET /tasks/{id} returns 200 for a valid ID."""
-    task = service.create_task(TaskCreate(title="My Task", status="in-progress"))
-
-    response = client.get(f"/tasks/{task.id}")
+def test_get_task_existing(client: TestClient):
+    """GET /tasks/{id} returns 200 for a valid ID (e.g. seed task or created task)."""
+    # Seed task 1 exists
+    response = client.get("/tasks/1")
     assert response.status_code == 200
     result = response.json()
-    assert result["id"] == task.id
-    assert result["title"] == "My Task"
-    assert result["status"] == "in-progress"
+    assert result["id"] == 1
+    assert result["title"] == "Learn FastAPI"
+    assert result["status"] == "todo"
     assert result["done"] == 0
     assert "created_at" in result
 
@@ -115,7 +123,7 @@ def test_get_task_not_found(client: TestClient):
 
 
 def test_create_task_minimal(client: TestClient):
-    """POST /tasks with only required fields returns 201."""
+    """POST /tasks with only required fields returns 201 (ID 4 after 3 seeds)."""
     response = client.post("/tasks", json={"title": "Simple Task"})
     assert response.status_code == 201
     task = response.json()
@@ -123,12 +131,12 @@ def test_create_task_minimal(client: TestClient):
     assert task["description"] is None
     assert task["status"] == "todo"
     assert task["done"] == 0
-    assert task["id"] == 1
+    assert task["id"] == 4
     assert "created_at" in task
 
 
 def test_create_task_full(client: TestClient):
-    """POST /tasks with all optional fields returns 201."""
+    """POST /tasks with all optional fields returns 201 (ID 4 after 3 seeds)."""
     response = client.post(
         "/tasks",
         json={
@@ -143,7 +151,7 @@ def test_create_task_full(client: TestClient):
     assert task["description"] == "A detailed description"
     assert task["status"] == "in-progress"
     assert task["done"] == 0
-    assert task["id"] == 1
+    assert task["id"] == 4
 
 
 def test_create_task_done_status(client: TestClient):
@@ -176,19 +184,17 @@ def test_create_task_empty_title(client: TestClient):
 # ---------------------------------------------------------------------------
 
 
-def test_update_task_existing(client: TestClient, service: TaskService):
+def test_update_task_existing(client: TestClient):
     """PUT /tasks/{id} returns 200 and updated fields, updating done flag."""
-    task = service.create_task(TaskCreate(title="Original", status="todo"))
-    assert task.done == 0
-
+    # Update seed task 1
     response = client.put(
-        f"/tasks/{task.id}",
-        json={"title": "Updated", "description": "New desc", "status": "done"},
+        "/tasks/1",
+        json={"title": "Updated FastAPI", "description": "New desc", "status": "done"},
     )
     assert response.status_code == 200
     result = response.json()
-    assert result["id"] == task.id
-    assert result["title"] == "Updated"
+    assert result["id"] == 1
+    assert result["title"] == "Updated FastAPI"
     assert result["description"] == "New desc"
     assert result["status"] == "done"
     assert result["done"] == 1
@@ -204,11 +210,9 @@ def test_update_task_not_found(client: TestClient):
     assert "detail" in response.json()
 
 
-def test_update_task_invalid_body(client: TestClient, service: TaskService):
+def test_update_task_invalid_body(client: TestClient):
     """PUT /tasks/{id} with an invalid body returns 400."""
-    task = service.create_task(TaskCreate(title="Original"))
-
-    response = client.put(f"/tasks/{task.id}", json={})
+    response = client.put("/tasks/1", json={})
     assert response.status_code == 400
 
 
@@ -217,16 +221,14 @@ def test_update_task_invalid_body(client: TestClient, service: TaskService):
 # ---------------------------------------------------------------------------
 
 
-def test_delete_task_existing(client: TestClient, service: TaskService):
+def test_delete_task_existing(client: TestClient):
     """DELETE /tasks/{id} returns 204 with an empty body."""
-    task = service.create_task(TaskCreate(title="To Delete"))
-
-    response = client.delete(f"/tasks/{task.id}")
+    response = client.delete("/tasks/1")
     assert response.status_code == 204
     assert response.content == b""
 
     # Confirm the task is gone
-    follow_up = client.get(f"/tasks/{task.id}")
+    follow_up = client.get("/tasks/1")
     assert follow_up.status_code == 404
 
 
@@ -242,12 +244,13 @@ def test_delete_task_not_found(client: TestClient):
 # ---------------------------------------------------------------------------
 
 
-def test_full_lifecycle(client: TestClient, service: TaskService):
+def test_full_lifecycle(client: TestClient):
     """Create, read, update, delete, verify gone — one task end-to-end."""
-    # Create (via API to exercise the full path)
+    # Create (via API to exercise the full path) -> gets ID 4
     create_res = client.post("/tasks", json={"title": "Lifecycle Task"})
     assert create_res.status_code == 201
     task_id = create_res.json()["id"]
+    assert task_id == 4
     assert create_res.json()["done"] == 0
 
     # Read
