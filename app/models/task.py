@@ -17,27 +17,18 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    """Fields required when creating a new task.
-
-    `TaskBase` already contains exactly what we need, so this subclass is
-    mainly a semantic marker — callers POST a TaskCreate and the server
-    assigns the ID and timestamp.
-    """
+    """Fields required when creating a new task."""
 
 
 class TaskUpdate(TaskBase):
-    """Fields required when updating an existing task.
-
-    Currently mirrors TaskCreate (full replace, not a partial patch), but
-    kept as a separate schema so partial-update support can be added later
-    without affecting the create contract.
-    """
+    """Fields required when updating an existing task."""
 
 
 class Task(TaskBase):
-    """A task as stored in memory (read model)."""
+    """A task as stored in the database (read model)."""
 
     id: int = Field(..., description="Unique identifier (auto-incremented)")
+    done: int = Field(0, description="1 if done, 0 otherwise")
     created_at: datetime = Field(
         ..., description="Timestamp the task was created"
     )

@@ -1,9 +1,8 @@
 """SQLite-backed task storage and business logic.
 
 The TaskService encapsulates the entire persistence layer: a SQLite database
-connection, table initialization, and the five CRUD methods. Route handlers
-never touch storage directly — they delegate to a TaskService instance,
-which can be swapped or reset for testing.
+connection via `app.database.connection`, table initialization, and the five
+CRUD methods with `done`/`status` synchronization.
 """
 
 import sqlite3
@@ -11,7 +10,8 @@ from datetime import datetime
 
 from fastapi import Depends
 
-from app.db.database import DB_PATH, get_connection
+from app.database.connection import DB_PATH, get_connection
+from app.database.initialization import init_db
 from app.errors.exceptions import TaskNotFoundError
 from app.models.task import Task, TaskCreate, TaskUpdate
 
@@ -21,21 +21,19 @@ class TaskService:
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
+        init_db(db_path)
         self._conn: sqlite3.Connection = get_connection(db_path)
-        # CREATE TABLE on the same connection so the table is visible
-        # in-memory databases and on the persistent connection.
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                title       TEXT    NOT NULL CHECK(length(title) > 0),
-                description TEXT,
-                status      TEXT    NOT NULL DEFAULT 'todo',
-                created_at  REAL    NOT NULL
-            )
-            """
-        )
-        self._conn.commit()
+
+    def _parse_created_at(self, val) -> datetime:
+        """Parse created_at stored as TEXT (ISO string) or REAL (timestamp)."""
+        if isinstance(val, (int, float)):
+            return datetime.fromtimestamp(val)
+        if isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val)
+            except ValueError:
+                return datetime.now()
+        return datetime.now()
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         """Convert a sqlite3.Row into a Task Pydantic model."""
@@ -44,7 +42,8 @@ class TaskService:
             title=row["title"],
             description=row["description"],
             status=row["status"],
-            created_at=datetime.fromtimestamp(row["created_at"]),
+            done=row["done"],
+            created_at=self._parse_created_at(row["created_at"]),
         )
 
     def list_tasks(self) -> list[Task]:
@@ -65,14 +64,16 @@ class TaskService:
 
     def create_task(self, task_create: TaskCreate) -> Task:
         """Create and store a new task with an auto-generated ID and timestamp."""
-        now = datetime.now()
+        now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        done = 1 if task_create.status == "done" else 0
         cursor = self._conn.execute(
-            "INSERT INTO tasks (title, description, status, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO tasks (title, description, status, done, created_at) VALUES (?, ?, ?, ?, ?)",
             (
                 task_create.title,
                 task_create.description,
                 task_create.status,
-                now.timestamp(),
+                done,
+                now_str,
             ),
         )
         self._conn.commit()
@@ -85,14 +86,16 @@ class TaskService:
     def update_task(self, task_id: int, task_update: TaskUpdate) -> Task:
         """Replace title/description/status of an existing task by its ID.
 
-        The original created_at timestamp is preserved.
+        The original created_at timestamp is preserved. `done` is synchronized with `status`.
         """
+        done = 1 if task_update.status == "done" else 0
         cursor = self._conn.execute(
-            "UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ?",
+            "UPDATE tasks SET title = ?, description = ?, status = ?, done = ? WHERE id = ?",
             (
                 task_update.title,
                 task_update.description,
                 task_update.status,
+                done,
                 task_id,
             ),
         )

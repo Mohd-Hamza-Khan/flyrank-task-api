@@ -54,15 +54,16 @@ flyrank-task-api/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   └── config.py           # Placeholder for future settings
-│   ├── db/
+│   ├── database/
 │   │   ├── __init__.py
-│   │   └── database.py         # SQLite connection + schema initialization
+│   │   ├── connection.py       # SQLite connection manager
+│   │   └── initialization.py   # Schema creation & idempotent seeding
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── task.py             # Pydantic schemas (TaskBase, TaskCreate, TaskUpdate, Task)
+│   │   └── task.py             # Pydantic schemas (TaskBase, TaskCreate, TaskUpdate, Task with done)
 │   ├── services/
 │   │   ├── __init__.py
-│   │   └── task_service.py     # TaskService — SQLite storage + business logic
+│   │   └── task_service.py     # TaskService — SQLite storage + done/status sync
 │   ├── errors/
 │   │   ├── __init__.py
 │   │   ├── exceptions.py       # Domain exceptions (TaskNotFoundError)
@@ -72,7 +73,8 @@ flyrank-task-api/
 │       └── logging.py          # Placeholder for request logging
 ├── tests/
 │   ├── __init__.py
-│   └── test_tasks.py           # 16 tests covering all endpoints
+│   ├── test_tasks.py           # Endpoint tests
+│   └── test_database.py        # Database initialization & seeding tests
 ├── requirements.txt
 ├── README.md
 └── tasks.db                    # SQLite database file (gitignored)

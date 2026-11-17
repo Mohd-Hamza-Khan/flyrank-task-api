@@ -70,15 +70,17 @@ def test_list_tasks_empty(client: TestClient):
 
 def test_list_tasks_non_empty(client: TestClient, service: TaskService):
     """GET /tasks returns 200 and all stored tasks."""
-    service.create_task(TaskCreate(title="Task A"))
-    service.create_task(TaskCreate(title="Task B"))
+    service.create_task(TaskCreate(title="Task A", status="todo"))
+    service.create_task(TaskCreate(title="Task B", status="done"))
 
     response = client.get("/tasks")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
     assert data[0]["title"] == "Task A"
+    assert data[0]["done"] == 0
     assert data[1]["title"] == "Task B"
+    assert data[1]["done"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -88,14 +90,15 @@ def test_list_tasks_non_empty(client: TestClient, service: TaskService):
 
 def test_get_task_existing(client: TestClient, service: TaskService):
     """GET /tasks/{id} returns 200 for a valid ID."""
-    task = service.create_task(TaskCreate(title="My Task"))
+    task = service.create_task(TaskCreate(title="My Task", status="in-progress"))
 
     response = client.get(f"/tasks/{task.id}")
     assert response.status_code == 200
     result = response.json()
     assert result["id"] == task.id
     assert result["title"] == "My Task"
-    assert result["status"] == "todo"
+    assert result["status"] == "in-progress"
+    assert result["done"] == 0
     assert "created_at" in result
 
 
@@ -119,6 +122,7 @@ def test_create_task_minimal(client: TestClient):
     assert task["title"] == "Simple Task"
     assert task["description"] is None
     assert task["status"] == "todo"
+    assert task["done"] == 0
     assert task["id"] == 1
     assert "created_at" in task
 
@@ -138,7 +142,20 @@ def test_create_task_full(client: TestClient):
     assert task["title"] == "Full Task"
     assert task["description"] == "A detailed description"
     assert task["status"] == "in-progress"
+    assert task["done"] == 0
     assert task["id"] == 1
+
+
+def test_create_task_done_status(client: TestClient):
+    """POST /tasks with status 'done' sets done=1."""
+    response = client.post(
+        "/tasks",
+        json={"title": "Finished Task", "status": "done"},
+    )
+    assert response.status_code == 201
+    task = response.json()
+    assert task["status"] == "done"
+    assert task["done"] == 1
 
 
 def test_create_task_invalid_body(client: TestClient):
@@ -160,8 +177,9 @@ def test_create_task_empty_title(client: TestClient):
 
 
 def test_update_task_existing(client: TestClient, service: TaskService):
-    """PUT /tasks/{id} returns 200 and updated fields."""
-    task = service.create_task(TaskCreate(title="Original"))
+    """PUT /tasks/{id} returns 200 and updated fields, updating done flag."""
+    task = service.create_task(TaskCreate(title="Original", status="todo"))
+    assert task.done == 0
 
     response = client.put(
         f"/tasks/{task.id}",
@@ -173,6 +191,7 @@ def test_update_task_existing(client: TestClient, service: TaskService):
     assert result["title"] == "Updated"
     assert result["description"] == "New desc"
     assert result["status"] == "done"
+    assert result["done"] == 1
 
 
 def test_update_task_not_found(client: TestClient):
@@ -229,6 +248,7 @@ def test_full_lifecycle(client: TestClient, service: TaskService):
     create_res = client.post("/tasks", json={"title": "Lifecycle Task"})
     assert create_res.status_code == 201
     task_id = create_res.json()["id"]
+    assert create_res.json()["done"] == 0
 
     # Read
     read_res = client.get(f"/tasks/{task_id}")
@@ -242,6 +262,7 @@ def test_full_lifecycle(client: TestClient, service: TaskService):
     )
     assert update_res.status_code == 200
     assert update_res.json()["status"] == "done"
+    assert update_res.json()["done"] == 1
 
     # Delete
     delete_res = client.delete(f"/tasks/{task_id}")
